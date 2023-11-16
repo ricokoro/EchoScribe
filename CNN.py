@@ -23,7 +23,7 @@ trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size)
 testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size)
 
 # The classes of our data
-classes = ('h', 'e', 'l', 'o', 'nothing')
+classes = ('good', 'hello', 'man', 'girl', 'sorry')
 
 # everything below is from CNN example code
 
