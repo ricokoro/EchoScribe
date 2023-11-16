@@ -15,11 +15,31 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = './sessions'
 Session(app)
 
+# File to store the text data
+file_path = "text_data.txt"
+
+# Read initial text from the file
+try:
+    with open(file_path, "r") as file:
+        text = file.read()
+except FileNotFoundError:
+    # If the file doesn't exist yet, create it
+    text = ""
+    with open(file_path, "w") as file:
+        file.write(text)
+
+@app.route('/', methods=['GET'])
+def index():
+    global text
+    return 'Hi! This is your transcript:<br>' + text.replace('\n', '<br>')
+
 @app.route('/predict', methods=['POST'])
 def predict():
+    global text, file_path
+
     if request.method != 'POST':
         return jsonify({'error': 'POST method expected'}), 400
-    print(str(request.files), len(request.files))
+
     if 'image' not in request.files:
         return jsonify({'error': 'No image in request'}), 400
 
@@ -45,18 +65,29 @@ def predict():
     prediction = "hello" # model.predict(image_normalized)
 
     # Get the last prediction from the session
-    last_prediction = session['last_prediction'] if 'last_prediction' in session else '' #.get('last_prediction', None)
+    last_prediction = session.get('last_prediction', '')
 
-    if prediction != last_prediction or True:
-        result = last_prediction + prediction
+    if prediction == 'del':
+        text += "\n"
+        result = ''
+        session['last_prediction'] = ''
+        session['result'] = ''
+    elif prediction == 'nothing':
+        result = session.get('result', '')
+        session['last_prediction'] = ''
+        session['result'] = result
+    elif prediction != last_prediction or True:
+        text += prediction
+        result = session.get('result', '') + prediction
         # Update the last prediction in the session
         session['last_prediction'] = prediction
         session['result'] = result
 
-        print(result)
+    with open(file_path, "w") as file:
+        file.write(text)
 
-        # Publish the new prediction to the MQTT broker
-        mqttc.publish('result', result)
+    # Publish the new prediction to the MQTT broker
+    mqttc.publish('result', result)
 
     # Generate a JSON response containing the prediction
     response = {'prediction': prediction}
@@ -65,4 +96,4 @@ def predict():
     return jsonify(response)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port='5000', debug=True)
+    app.run(host='0.0.0.0', port='3237', debug=True)
