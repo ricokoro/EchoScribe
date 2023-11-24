@@ -1,3 +1,5 @@
+# powershell
+
 from cv2 import VideoCapture, imwrite, imshow, waitKey, destroyWindow, CAP_PROP_POS_FRAMES
 import time
 import requests

@@ -1,15 +1,35 @@
-
+# ubuntu
 from flask import Flask, request, jsonify, session
 from flask_session import Session
 import pickle
 import numpy as np
 from PIL import Image
-import paho.mqtt.client as mqtt
 from time import sleep
 from tensorflow.keras.preprocessing.image import img_to_array
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+import os
 
-mqttc = mqtt.Client()
-mqttc.connect('localhost', 1883, 60)
+npz_file = np.load('model_weights.npz')
+
+with open('label_encoder.pkl', 'rb') as file:
+    le = pickle.load(file)
+
+model = Sequential([
+    Conv2D(32, (3, 3), activation='relu', input_shape=(128, 128, 3)),
+    MaxPooling2D(2, 2),
+    Conv2D(64, (3, 3), activation='relu'),
+    MaxPooling2D(2, 2),
+    Conv2D(128, (3, 3), activation='relu'),
+    MaxPooling2D(2, 2),
+    Flatten(),
+    Dense(512, activation='relu'),
+    Dense(6, activation='softmax') 
+])
+
+weights = [npz_file[key] for key in npz_file]
+model.set_weights(weights)
+
 app = Flask(__name__)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = './sessions'
@@ -35,7 +55,7 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    global text, file_path
+    global text, file_path, model, le
 
     if request.method != 'POST':
         return jsonify({'error': 'POST method expected'}), 400
@@ -58,39 +78,48 @@ def predict():
     # Normalize the pixel values to be between 0 and 1
     image_normalized = image_array / 255.0
 
-    # Make the prediction using the model
-    # with open('model.pkl', 'rb') as f:
-    #     model = pickle.load(f)
+    # Expand dimensions to create a batch with a single image
+    image_normalized = np.expand_dims(image_normalized, axis=0)
 
-    prediction = "hello" # model.predict(image_normalized)
+    # Make the prediction using the model
+    prediction = model.predict(image_normalized)
+
+    predicted_class = np.argmax(prediction, axis=1)
+
+    # If you have label encodings (e.g., 0='A', 1='B', etc.), decode the predicted class
+    predicted_label = le.inverse_transform(predicted_class)
+    print(f'Predicted label: {predicted_label[0]}')
+
+    prediction = predicted_label[0]
+
+    print(prediction)
 
     # Get the last prediction from the session
     last_prediction = session.get('last_prediction', '')
+    result = ''
 
     if prediction == 'del':
         text += "\n"
-        result = ''
         session['last_prediction'] = ''
         session['result'] = ''
     elif prediction == 'nothing':
         result = session.get('result', '')
         session['last_prediction'] = ''
         session['result'] = result
-    elif prediction != last_prediction or True:
+    else: # prediction != last_prediction:
         text += prediction
         result = session.get('result', '') + prediction
         # Update the last prediction in the session
         session['last_prediction'] = prediction
         session['result'] = result
 
+    print(prediction)
+
     with open(file_path, "w") as file:
         file.write(text)
 
-    # Publish the new prediction to the MQTT broker
-    mqttc.publish('result', result)
-
     # Generate a JSON response containing the prediction
-    response = {'prediction': prediction}
+    response = {'result': result}
 
     # Return the JSON response
     return jsonify(response)
